@@ -56,6 +56,8 @@ mod sky_disc_blend_tests;
 mod undrawn_terrain_tests;
 
 #[cfg(test)]
+mod full_outputs_tests;
+#[cfg(test)]
 mod shadow_faces_tests;
 
 #[cfg(test)]
@@ -2805,10 +2807,21 @@ impl PackPost {
             .shadow
             .zip(shadow_geometry.as_ref())
             .and_then(|(p, g)| build(p, Some(g)));
+        // A GPU that refuses translucent terrain's program with the boats' water patches gets it
+        // without them (`Post::shadow_water_plain`), rather than no translucent shadows at all.
+        let mut plain = post.shadow_water_plain;
         let shadow_water = post
             .shadow_water
             .zip(shadow_geometry.as_ref())
             .and_then(|(p, g)| build(p, Some(g)));
+        let unpatched = shadow_water.is_none().then(|| plain.take()).flatten();
+        let unpatched_name = unpatched.as_ref().map(|p| p.name.clone());
+        let shadow_water = shadow_water.or_else(|| {
+            unpatched
+                .zip(shadow_geometry.as_ref())
+                .and_then(|(p, g)| build(p, Some(g)))
+        });
+        let water_unpatched = unpatched_name.filter(|_| shadow_water.is_some());
         let (hides_sky, hides_celestial) = (post.sky.is_some(), post.sky_textured.is_some());
         let sky = (post.sky.is_some() || post.sky_textured.is_some()).then(|| {
             let geometry = PackSky::new(device);
@@ -3363,6 +3376,17 @@ impl PackPost {
         let white = [255u8; 4];
         let black = [0u8; 4];
         let flat_normal = [128u8, 128, 255, 255];
+        // Said as what it is, not as a program skipped.
+        if let Some(name) = water_unpatched {
+            let skipped = format!("{name}: skipped: ");
+            if let Some(n) = notes.iter_mut().rev().find(|n| n.starts_with(&skipped)) {
+                *n = format!(
+                    "{name}: translucent terrain without the boats' water patches, as the GPU \
+                     refused it with them ({})",
+                    &n[skipped.len()..]
+                );
+            }
+        }
         let jobs = (pack.jobs.as_ref())
             .map(std::cell::RefCell::take)
             .unwrap_or_default();

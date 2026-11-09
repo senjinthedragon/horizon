@@ -492,6 +492,11 @@ pub struct Post {
     /// translucent terrain (`shadow_water` or `shadow`), into the shadow buffers (2.4).
     pub shadow: Option<PostProgram>,
     pub shadow_water: Option<PostProgram>,
+    /// `shadow_water` without the boats' water patches (`GbuffersInputs::water_patches`), for a
+    /// GPU that refuses it with them: their vertex output is one more than a pack writing as
+    /// many as the GPU takes has room for. The water's light then shows in the boats, as before
+    /// the patches, and the rest of the shadow pass stays.
+    pub shadow_water_plain: Option<PostProgram>,
     /// What draws entities (`shadow_entities` or `shadow`) and block entities (`shadow_block` or
     /// `shadow`) from the light, unless `shadowEntities`/`shadowBlockEntities` is false.
     pub shadow_entities: Option<PostProgram>,
@@ -697,6 +702,7 @@ pub fn load_post(
         shadow_pass: false,
         shadow: None,
         shadow_water: None,
+        shadow_water_plain: None,
         shadow_entities: None,
         shadow_block: None,
         shadow_only_player: false,
@@ -1208,6 +1214,12 @@ fn load_shadow(
     let shadow_block = (keep("shadowBlockEntities") || only_lit)
         .then(|| load(&["shadow_block", "shadow"], entities, false, true))
         .flatten();
+    let water_plain = water
+        .as_ref()
+        .and_then(|_| load(&["shadow_water", "shadow"], terrain, true, false));
+    // The plain one's notes are the patched one's again: each once.
+    let mut seen = std::collections::HashSet::new();
+    loader.post.notes.retain(|n| seen.insert(n.clone()));
     if shadow.is_none() && terrain.is_some() {
         loader
             .post
@@ -1217,6 +1229,7 @@ fn load_shadow(
     loader.geometry = None;
     loader.post.shadow = shadow;
     loader.post.shadow_water = water;
+    loader.post.shadow_water_plain = water_plain;
     loader.post.shadow_entities = shadow_entities;
     loader.post.shadow_block = shadow_block;
     loader.post.shadow_only_player = only_player;
@@ -2529,6 +2542,11 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
         // shadow_water falls back to shadow.
         assert_eq!(
             post.shadow_water.as_ref().map(|p| p.name.as_str()),
+            Some("shadow")
+        );
+        // ...with the boats' water patches, and once more without them.
+        assert_eq!(
+            post.shadow_water_plain.as_ref().map(|p| p.name.as_str()),
             Some("shadow")
         );
         // Entities fall back to shadow; block entities have their own program.
