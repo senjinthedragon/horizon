@@ -7430,6 +7430,13 @@ impl Renderer {
         }
     }
 
+    /// The running `shaders/` pack has found no room in video memory for what it draws into for
+    /// too many frames in a row (`PackPost::out_of_room`): the game turns it off
+    /// (`set_shader_pack` without a pack), which frees what it holds, before the frames given
+    /// up end the game (`frame_given_up`).
+    pub fn shader_pack_out_of_room(&self) -> bool {
+        matches!(&self.pack_post, Some((_, Some(post))) if post.out_of_room())
+    }
     /// The dimension the shader pack was last set for.
     pub fn shader_pack_dimension(&self) -> Option<i32> {
         let loading = self.pack_loading.as_ref().map(|l| l.dimension);

@@ -3,7 +3,8 @@
 //! size (a window resized, the resolution scale), which is when video memory, full of terrain,
 //! may have no room for them. Each is made as the frame's own targets are
 //! (`frame_targets::made`, #13624): what failed is dropped, never kept, and the frame is given
-//! up and tried again.
+//! up and tried again. A pack that finds no room frame after frame is turned off
+//! (`out_of_room`) well before the frames given up would end the game.
 
 use horizon_shaders::{BUFFERS, Group};
 
@@ -11,7 +12,35 @@ use super::{FinalTarget, Mips, PackPost, SINK, Targets};
 use crate::gfx::frame_targets::{Kind, made};
 use crate::gfx::pack_images;
 
+/// Frames in a row a pack may give up for want of video memory before it is turned off
+/// (`PackPost::out_of_room`): a quarter of what ends the game (`GIVEN_UP_LIMIT`, #13624), so
+/// the frames after it have the time to show that the game draws without the pack, and several
+/// times the frames the renderer takes to give back what it let go (`arena::GRAVE_FRAMES`), so
+/// a pack short of room only while that lands keeps running. Half a second at 60 frames a
+/// second.
+pub(super) const OUT_OF_ROOM_FRAMES: u32 = 30;
+
 impl PackPost {
+    /// Makes what a frame at `size` in a window of `window` pixels draws into (`resize`,
+    /// `fit_final`), and counts the frames in a row without the room for it.
+    pub(super) fn fit(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: [u32; 2],
+        window: [u32; 2],
+    ) -> bool {
+        let fits = self.resize(device, queue, size) && self.fit_final(device, size, window);
+        self.given_up = if fits { 0 } else { self.given_up + 1 };
+        fits
+    }
+
+    /// Video memory has had no room for what the pack draws into for `OUT_OF_ROOM_FRAMES`
+    /// frames in a row: none is coming, and the game runs on only without the pack.
+    pub(in crate::gfx) fn out_of_room(&self) -> bool {
+        self.given_up >= OUT_OF_ROOM_FRAMES
+    }
+
     /// Makes what a frame at `size` draws into, where it is missing or made for another render
     /// size. `false` where video memory had no room for some of it: that is dropped, and made
     /// again on the next frame.

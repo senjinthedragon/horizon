@@ -826,6 +826,8 @@ pub struct PackPost {
     upscale: (wgpu::RenderPipeline, wgpu::BindGroupLayout),
     /// The picture `final` draws while the world's size is not the window's.
     final_target: Option<FinalTarget>,
+    /// Frames in a row given up for want of video memory (`targets.rs`).
+    given_up: u32,
     screen: wgpu::TextureFormat,
     uniforms: FrameUniforms,
 }
@@ -3576,6 +3578,7 @@ impl PackPost {
             copy,
             upscale,
             final_target: None,
+            given_up: 0,
             screen,
             uniforms: {
                 let mut u = FrameUniforms::default();
@@ -5209,7 +5212,7 @@ impl PackPost {
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
     ) -> bool {
-        if !self.resize(device, queue, size) || !self.fit_final(device, size, window) {
+        if !self.fit(device, queue, size, window) {
             return false;
         }
         // Last frame's water patches (or a new texture's zeros) out: depth 1 is no patch.

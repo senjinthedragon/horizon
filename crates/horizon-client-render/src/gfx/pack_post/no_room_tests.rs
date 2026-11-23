@@ -121,3 +121,27 @@ fn a_frame_without_room_for_final_s_picture_is_given_up_and_the_next_makes_it() 
     assert!(post.final_target.is_none());
     draws(&gpu, &mut post, [16, 16], [32, 32]);
 }
+
+/// Video memory that stays full: the pack says so after `OUT_OF_ROOM_FRAMES` frames given up
+/// in a row, for the game to turn it off, and not while a frame in between still drew.
+#[test]
+fn a_pack_without_room_frame_after_frame_is_out_of_room() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Fixture::new() else { return };
+    let mut post = gpu.build(pack(true));
+    draws(&gpu, &mut post, [16, 16], [16, 16]);
+    for _ in 1..super::targets::OUT_OF_ROOM_FRAMES {
+        is_given_up(&gpu, &mut post, [32, 32], [32, 32]);
+        assert!(!post.out_of_room());
+    }
+    // A frame that found room starts the count again.
+    draws(&gpu, &mut post, [32, 32], [32, 32]);
+    for _ in 1..super::targets::OUT_OF_ROOM_FRAMES {
+        is_given_up(&gpu, &mut post, [16, 16], [16, 16]);
+        assert!(!post.out_of_room());
+    }
+    is_given_up(&gpu, &mut post, [16, 16], [16, 16]);
+    assert!(post.out_of_room());
+    // It kept nothing of what failed for the game to free but the pack itself.
+    assert!(post.images[0].view.is_none() && post.targets.is_none());
+}
