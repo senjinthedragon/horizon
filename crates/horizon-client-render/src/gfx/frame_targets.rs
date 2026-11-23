@@ -24,6 +24,7 @@ pub(crate) enum Kind {
     Visibility,
     FrameGeneration,
     Buffers,
+    Pack,
 }
 
 impl Kind {
@@ -39,6 +40,9 @@ impl Kind {
             Kind::Visibility => "solid terrain draws without the visibility buffer",
             Kind::FrameGeneration => "frame generation is off until the window's size changes",
             Kind::Buffers => "a frame that needs a larger buffer is skipped",
+            Kind::Pack => {
+                "no room for what the shader pack draws into; frames are skipped until there is"
+            }
         }
     }
 }

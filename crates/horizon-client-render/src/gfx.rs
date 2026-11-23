@@ -11972,7 +11972,7 @@ impl Renderer {
                 indices: self.indices.clone(),
                 quads: cloud_quads,
             }));
-            post.run(
+            let drawn = post.run(
                 &self.device,
                 &self.queue,
                 &mut encoder,
@@ -11990,6 +11990,17 @@ impl Renderer {
             // here until the next shader-pack frame (or forever once the pack is off).
             self.pack_pages.clear();
             self.pack_post = Some((dimension, Some(post)));
+            // No room for what the pack draws into (#13624): it kept nothing that failed, and
+            // makes it on the next frame.
+            if !drawn {
+                return self.abandon_frame(frame_targets::Abandoned::grown(
+                    encoder,
+                    copies,
+                    surface_frame,
+                    fg_frames,
+                    backstop,
+                ));
+            }
         } else if let Some((color, depth)) = &scaled
             && native_post
             && let Some(native) = &mut self.external
