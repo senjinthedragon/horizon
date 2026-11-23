@@ -134,6 +134,20 @@ pub(super) fn makeable(
     Ok(())
 }
 
+/// Lets go of the images sized for another render size than `size`, which `resize_images` then
+/// makes again; whether there were any.
+pub(super) fn release_resized(images: &mut [PackImage], size: [u32; 2]) -> bool {
+    let mut released = false;
+    for image in images {
+        let relative = matches!(image.def.size, horizon_shaders::ImageSize::Relative(_));
+        if relative && image.view.is_some() && image.made_for != size {
+            image.reset_history();
+            released = true;
+        }
+    }
+    released
+}
+
 /// Makes the images that are missing or sized for another render size; whether it made any.
 /// `None` where video memory had no room for one (#13624): it is left without its textures, and
 /// made on the next frame.
@@ -456,6 +470,20 @@ impl Buffers {
             buffers: Vec::new(),
             made_for: [0; 2],
         }
+    }
+
+    /// Lets go of the buffers when one depends on the render size and they were made for
+    /// another than `size`: `resize` then makes them again. Whether it did.
+    pub(super) fn release_resized(&mut self, size: [u32; 2]) -> bool {
+        let relative = self
+            .objects
+            .values()
+            .any(|o| matches!(o, BufferObject::PerPixel { .. }));
+        let outdated = relative && self.group.is_some() && self.made_for != size;
+        if outdated {
+            self.reset_history();
+        }
+        outdated
     }
 
     /// Makes the buffers (again, when one depends on the render size and it changed): their

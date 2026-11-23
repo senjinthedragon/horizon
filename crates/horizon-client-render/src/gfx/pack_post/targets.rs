@@ -21,6 +21,19 @@ impl PackPost {
         queue: &wgpu::Queue,
         size: [u32; 2],
     ) -> bool {
+        // Free what another render size makes again before making any of it: a pack with large
+        // buffers can't hold both sets at once on a card it otherwise fits (a window resize ran
+        // out of video memory), and an image or a storage buffer of the render size made while
+        // the old targets were still there met nearly everything twice. The bind groups hold
+        // the old views too, and the GPU may still be using them, so wait for it; a resize is
+        // rare.
+        let images = pack_images::release_resized(&mut self.images, size);
+        let buffers = self.buffers.release_resized(size);
+        let targets = self.targets.take_if(|t| t.size != size).is_some();
+        if images || buffers || targets {
+            self.forget_groups();
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
         let images = pack_images::resize_images(device, &mut self.images, size);
         if images != Some(false) {
             self.forget_groups();
@@ -33,14 +46,6 @@ impl PackPost {
         }
         self.setup_pending = true;
         self.rgb_unset = true;
-        // Free the old targets before making the new ones: a pack with large buffers can't
-        // hold both sets at once on a card it otherwise fits (a window resize ran out of video
-        // memory). The bind groups hold the old views too, and the GPU may still be using
-        // them, so wait for it; a resize is rare.
-        if self.targets.take().is_some() {
-            self.forget_groups();
-            let _ = device.poll(wgpu::PollType::wait_indefinitely());
-        }
         self.targets = made(device, Kind::Pack, || self.targets(device, size));
         if self.targets.is_none() {
             return false;

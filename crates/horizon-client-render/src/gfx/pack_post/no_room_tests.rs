@@ -84,6 +84,8 @@ fn a_frame_without_room_for_an_image_is_given_up_and_the_next_makes_it() {
     draws(&gpu, &mut post, [16, 16], [16, 16]);
     is_given_up(&gpu, &mut post, [32, 32], [32, 32]);
     assert!(post.images[0].view.is_none());
+    // The buffers of the old size were let go before the image was made: it never meets both.
+    assert!(post.targets.is_none());
     draws(&gpu, &mut post, [32, 32], [32, 32]);
 }
 
