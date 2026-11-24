@@ -90,6 +90,24 @@ fn material_demand_follows_usable_bindings_and_custom_overrides() {
             "",
             false,
         ),
+        // A post pass reads the atlas's normal or specular map through a texture of the `_n`
+        // or `_s` atlas resource: it needs the maps, under a name of the pack's own.
+        (
+            "post_atlas_normals",
+            "composite",
+            "uniform sampler2D atlasNormals;",
+            "texture2D(atlasNormals,vec2(0.3))",
+            "texture.composite.atlasNormals=minecraft:textures/atlas/blocks_n.png",
+            true,
+        ),
+        (
+            "post_atlas_specular",
+            "composite",
+            "uniform sampler2D atlasSpecular;",
+            "texture2D(atlasSpecular,vec2(0.3))",
+            "texture.composite.atlasSpecular=minecraft:textures/atlas/blocks_s.png",
+            true,
+        ),
         (
             "unusable",
             "gbuffers_terrain",
