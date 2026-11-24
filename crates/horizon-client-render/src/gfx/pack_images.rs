@@ -533,11 +533,12 @@ impl Buffers {
                         mapped_at_creation: false,
                     });
                     // A buffer the pack initializes from a file starts with the file's bytes,
-                    // the rest of it zero: written through the queue, as a buffer mapped at
-                    // creation fails before a scope can see it had no room.
-                    if let Some(data) = data {
-                        let mut contents = data.to_vec();
-                        contents.resize(size as usize, 0);
+                    // the rest of it zero as wgpu makes it: written through the queue, as a
+                    // buffer mapped at creation fails before a scope can see it had no room.
+                    // Only the file's bytes are staged, padded to the copy's 4.
+                    if let Some(data) = data.filter(|d| !d.is_empty()) {
+                        let mut contents = data[..data.len().min(size as usize)].to_vec();
+                        contents.resize(contents.len().next_multiple_of(4), 0);
                         queue.write_buffer(&buffer, 0, &contents);
                     }
                     buffer

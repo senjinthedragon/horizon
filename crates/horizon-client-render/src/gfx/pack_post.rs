@@ -828,6 +828,9 @@ pub struct PackPost {
     final_target: Option<FinalTarget>,
     /// Frames in a row given up for want of video memory (`targets.rs`).
     given_up: u32,
+    /// What a scaled screenshot's frame made without scopes of its own (`targets.rs`): the
+    /// images (bit n: image n) and the storage buffers, dropped where its scopes failed.
+    unchecked: (u64, bool),
     screen: wgpu::TextureFormat,
     uniforms: FrameUniforms,
 }
@@ -3579,6 +3582,7 @@ impl PackPost {
             upscale,
             final_target: None,
             given_up: 0,
+            unchecked: (0, false),
             screen,
             uniforms: {
                 let mut u = FrameUniforms::default();
@@ -4952,8 +4956,10 @@ impl PackPost {
             .chain(&mut self.shadow_comp);
         for pass in passes {
             pass.groups.clear();
+            pass.portal_groups.clear();
             for c in &mut pass.compute {
                 c.groups.clear();
+                c.portal_groups.clear();
             }
         }
     }

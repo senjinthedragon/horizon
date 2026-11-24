@@ -12980,7 +12980,13 @@ impl Renderer {
         if checks.is_none() {
             self.given_up = 0;
         }
+        let screenshot = checks.is_some();
         let failed = checks.and_then(GpuChecks::pop);
+        // A pack's image or storage buffer of a size of its own, made in this frame without
+        // scopes of its own, stays invalid where the frame's scopes failed (#13624).
+        if screenshot && let Some((_, Some(post))) = &mut self.pack_post {
+            post.screenshot_checked(failed.is_some());
+        }
         if failed.is_some() {
             // A scaled screenshot's encoder hit a GPU error and may have been rejected:
             // invalidate incremental caches and re-upload on the next frame.

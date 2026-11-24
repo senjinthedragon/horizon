@@ -9,7 +9,7 @@
 use horizon_shaders::{BUFFERS, Group};
 
 use super::{FinalTarget, Mips, PackPost, SINK, Targets};
-use crate::gfx::frame_targets::{Kind, made};
+use crate::gfx::frame_targets::{self, Kind, made};
 use crate::gfx::pack_images;
 
 /// Frames in a row a pack may give up for want of video memory before it is turned off
@@ -56,18 +56,28 @@ impl PackPost {
         // the old targets were still there met nearly everything twice. The bind groups hold
         // the old views too, and the GPU may still be using them, so wait for it; a resize is
         // rare.
+        // `final`'s picture of another size too, which `fit_final` would only drop after these
+        // are made.
         let images = pack_images::release_resized(&mut self.images, size);
         let buffers = self.buffers.release_resized(size);
         let targets = self.targets.take_if(|t| t.size != size).is_some();
-        if images || buffers || targets {
+        let picture = self.final_target.take_if(|t| t.size != size).is_some();
+        if images || buffers || targets || picture {
             self.forget_groups();
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
         }
+        let missing = self.missing();
         let images = pack_images::resize_images(device, &mut self.images, size);
         if images != Some(false) {
             self.forget_groups();
         }
-        if images.is_none() || !self.buffers.resize(device, queue, size) {
+        let buffers = images.is_some() && self.buffers.resize(device, queue, size);
+        if frame_targets::screenshot_frame() {
+            let made = self.missing();
+            self.unchecked.0 |= missing.0 & !made.0;
+            self.unchecked.1 |= missing.1 && !made.1;
+        }
+        if !buffers {
             return false;
         }
         if self.targets.as_ref().is_some_and(|t| t.size == size) {
@@ -253,6 +263,33 @@ impl PackPost {
             water_mask,
             mips,
         }
+    }
+
+    /// The images without textures (bit n: image n), and whether the storage buffers are.
+    fn missing(&self) -> (u64, bool) {
+        let images = self.images.iter().enumerate();
+        let images = images.fold(0, |m, (i, image)| m | u64::from(image.view.is_none()) << i);
+        (images, self.buffers.group.is_none())
+    }
+
+    /// A scaled screenshot's frame is checked: where its scopes found no room (`failed`), the
+    /// images and storage buffers it made, which may be invalid, are dropped for the next frame
+    /// to make again. What depends on the render size is made again at the window's size anyway,
+    /// but not an image or buffer of a size of its own, which would stay invalid.
+    pub(in crate::gfx) fn screenshot_checked(&mut self, failed: bool) {
+        let (images, buffers) = std::mem::take(&mut self.unchecked);
+        if !failed || (images == 0 && !buffers) {
+            return;
+        }
+        for (i, image) in self.images.iter_mut().enumerate() {
+            if images & 1 << i != 0 {
+                image.reset_history();
+            }
+        }
+        if buffers {
+            self.buffers.reset_history();
+        }
+        self.forget_groups();
     }
 
     /// Makes the picture a pack's `final` draws at `size` while the window is another, where it

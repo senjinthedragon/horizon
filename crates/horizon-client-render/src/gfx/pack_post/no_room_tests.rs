@@ -8,9 +8,12 @@ use std::io::{Cursor, Write};
 
 const VERTEX: &str = "#version 120\nvarying vec2 uv;\nvoid main() { uv=gl_MultiTexCoord0.xy; gl_Position=ftransform(); }\n";
 
-/// `final` shows (0.25, 0.5, 0.75): its own constant, or with `image` what a compute program
-/// stored into an image of the render size. Both declare a storage buffer.
-fn pack(image: bool) -> Post {
+/// An image of the render size, for `pack`.
+const RELATIVE: &str = "true 1.0 1.0";
+
+/// `final` shows (0.25, 0.5, 0.75): its own constant, or with `image` (its relative flag and
+/// size) what a compute program stored into an image. Both declare a storage buffer.
+fn pack(image: Option<&str>) -> Post {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let mut add = |name: &str, source: &str| {
         zip.start_file(
@@ -21,10 +24,12 @@ fn pack(image: bool) -> Post {
         zip.write_all(source.as_bytes()).unwrap();
     };
     add("final.vsh", VERTEX);
-    if image {
+    if let Some(size) = image {
         add(
             "shaders.properties",
-            "bufferObject.0 = 16\nimage.spray = spraySamp RGBA RGBA16F HALF_FLOAT false true 1.0 1.0\n",
+            &format!(
+                "bufferObject.0 = 16\nimage.spray = spraySamp RGBA RGBA16F HALF_FLOAT false {size}\n"
+            ),
         );
         add(
             "composite.csh",
@@ -80,7 +85,7 @@ fn is_given_up(gpu: &Fixture, post: &mut PackPost, size: [u32; 2], window: [u32;
 fn a_frame_without_room_for_an_image_is_given_up_and_the_next_makes_it() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
-    let mut post = gpu.build(pack(true));
+    let mut post = gpu.build(pack(Some(RELATIVE)));
     draws(&gpu, &mut post, [16, 16], [16, 16]);
     is_given_up(&gpu, &mut post, [32, 32], [32, 32]);
     assert!(post.images[0].view.is_none());
@@ -93,7 +98,7 @@ fn a_frame_without_room_for_an_image_is_given_up_and_the_next_makes_it() {
 fn a_frame_without_room_for_the_storage_buffers_is_given_up_and_the_next_makes_them() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
-    let mut post = gpu.build(pack(false));
+    let mut post = gpu.build(pack(None));
     is_given_up(&gpu, &mut post, [16, 16], [16, 16]);
     assert!(post.buffers.group.is_none());
     draws(&gpu, &mut post, [16, 16], [16, 16]);
@@ -103,7 +108,7 @@ fn a_frame_without_room_for_the_storage_buffers_is_given_up_and_the_next_makes_t
 fn a_frame_without_room_for_the_buffers_is_given_up_and_the_next_makes_them() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
-    let mut post = gpu.build(pack(false));
+    let mut post = gpu.build(pack(None));
     draws(&gpu, &mut post, [16, 16], [16, 16]);
     is_given_up(&gpu, &mut post, [32, 32], [32, 32]);
     assert!(post.targets.is_none());
@@ -115,11 +120,26 @@ fn a_frame_without_room_for_the_buffers_is_given_up_and_the_next_makes_them() {
 fn a_frame_without_room_for_final_s_picture_is_given_up_and_the_next_makes_it() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
-    let mut post = gpu.build(pack(false));
+    let mut post = gpu.build(pack(None));
     draws(&gpu, &mut post, [16, 16], [16, 16]);
     is_given_up(&gpu, &mut post, [16, 16], [32, 32]);
     assert!(post.final_target.is_none());
     draws(&gpu, &mut post, [16, 16], [32, 32]);
+}
+
+/// A scaled screenshot's frame makes what it draws into without scopes of its own, and its own
+/// scopes found no room: the image of a size of its own and the storage buffers it made may be
+/// invalid, and are dropped for the next frame to make, not kept for every frame after.
+#[test]
+fn a_failed_screenshot_frame_keeps_no_fixed_size_image_or_buffer_it_made() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Fixture::new() else { return };
+    let mut post = gpu.build(pack(Some("false 4 4")));
+    crate::gfx::frame_targets::in_screenshot(|| draws(&gpu, &mut post, [32, 32], [32, 32]));
+    post.screenshot_checked(true);
+    assert!(post.images[0].view.is_none());
+    assert!(post.buffers.group.is_none());
+    draws(&gpu, &mut post, [16, 16], [16, 16]);
 }
 
 /// Video memory that stays full: the pack says so after `OUT_OF_ROOM_FRAMES` frames given up
@@ -128,7 +148,7 @@ fn a_frame_without_room_for_final_s_picture_is_given_up_and_the_next_makes_it() 
 fn a_pack_without_room_frame_after_frame_is_out_of_room() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(gpu) = Fixture::new() else { return };
-    let mut post = gpu.build(pack(true));
+    let mut post = gpu.build(pack(Some(RELATIVE)));
     draws(&gpu, &mut post, [16, 16], [16, 16]);
     for _ in 1..super::targets::OUT_OF_ROOM_FRAMES {
         is_given_up(&gpu, &mut post, [32, 32], [32, 32]);
