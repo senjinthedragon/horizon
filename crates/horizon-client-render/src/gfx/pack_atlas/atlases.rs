@@ -60,12 +60,14 @@ impl Atlases {
         // for it; this is rare.
         self.materials = None;
         let _ = device.poll(wgpu::PollType::wait_indefinitely());
-        let Some((colour, materials, commands)) =
-            made(device, Kind::PackAtlas, || Self::make(device, sprites))
-        else {
+        // Submitted inside the scopes too: the copies can find no room as well.
+        let Some((colour, materials)) = made(device, Kind::PackAtlas, || {
+            let (colour, materials, commands) = Self::make(device, sprites);
+            queue.submit([commands]);
+            (colour, materials)
+        }) else {
             return false;
         };
-        queue.submit([commands]);
         if let Some(colour) = &colour {
             let [width, height] = colour.size();
             let maps = if materials.is_some() { 2 } else { 0 };

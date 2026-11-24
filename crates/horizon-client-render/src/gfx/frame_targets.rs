@@ -25,6 +25,7 @@ pub(crate) enum Kind {
     FrameGeneration,
     Buffers,
     PackAtlas,
+    Pack,
 }
 
 impl Kind {
@@ -41,6 +42,9 @@ impl Kind {
             Kind::FrameGeneration => "frame generation is off until the window's size changes",
             Kind::Buffers => "a frame that needs a larger buffer is skipped",
             Kind::PackAtlas => "no room for the shader pack's block atlas; the pack is not loaded",
+            Kind::Pack => {
+                "no room for what the shader pack draws into; frames are skipped until there is"
+            }
         }
     }
 }
@@ -71,6 +75,12 @@ pub(crate) fn in_screenshot<T>(draw: impl FnOnce() -> T) -> T {
     let drawn = draw();
     SCREENSHOT.set(was);
     drawn
+}
+
+/// Whether a scaled screenshot's frame is being drawn, in which `made` checks nothing: what it
+/// makes is checked by the frame's own scopes.
+pub(crate) fn screenshot_frame() -> bool {
+    SCREENSHOT.get()
 }
 
 /// A window frame begins: no `made` in it has found no room yet.
