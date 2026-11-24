@@ -7767,8 +7767,7 @@ impl Renderer {
                 }
                 self.pack_metadata = Some(built.metadata);
                 self.pack_post = None;
-                self.pack_atlas = None;
-                self.pack_material_atlases = None;
+                self.pack_atlases.release();
                 NativePackOutcome::Installed {
                     context,
                     labels: built.labels,
