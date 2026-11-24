@@ -5011,12 +5011,17 @@ impl PackPost {
     /// Whether a running pass can read resource-pack companion maps. Resolve this after
     /// pipeline fallback and texture overrides, independently of whether maps exist yet.
     pub fn needs_material_maps(&self) -> bool {
+        let sky = self
+            .sky
+            .iter()
+            .flat_map(|s| s.basic.iter().chain(&s.textured));
         let entities = self
             .entities
             .iter()
             .flat_map(|e| e.passes.iter().chain(&e.shadow).flatten());
         self.passes
             .iter()
+            .chain(sky)
             .chain(
                 [
                     &self.terrain,
@@ -5035,6 +5040,8 @@ impl PackPost {
             .chain(self.weather.iter().flatten())
             .chain(self.hand.iter().map(|h| &h.0))
             .chain(&self.shadow_comp)
+            // A pass's compute stages bind textures of their own.
+            .flat_map(|pass| std::iter::once(pass).chain(&pass.compute))
             .any(|pass| {
                 (pass.material_maps || pass.paged)
                     && pass
